@@ -1,0 +1,42 @@
+Project structure
+
+source/: reusable R functions (data generation, model fitting, CI methods, scenario runner).
+
+scripts/: entry script(s) that run one simulation scenario based on SLURM_ARRAY_TASK_ID.
+
+data/: intermediate results (.rds), one file per scenario (not tracked by git).
+
+logs/: Slurm stdout/stderr logs (not tracked by git).
+
+How to reproduce (cluster)
+
+From the project root (the folder containing job_slurm_array.sh):
+
+cd ~/code/bios731_hw2_xu
+
+
+(Optional) smoke test a couple of scenarios:
+
+sbatch --array=1-2 job_slurm_array.sh
+
+
+Run all scenarios in parallel (18 total):
+
+sbatch --array=1-18 job_slurm_array.sh
+
+
+Confirm outputs (should be 18 .rds files):
+
+ls data/*.rds | wc -l
+
+How to reproduce (local, optional)
+
+Run a single scenario by providing a scenario id:
+
+SCENARIO_ID=1 NSIM=500 B=500 B_INNER=100 Rscript scripts/run_scenario_main.R
+
+Notes
+
+Each Slurm array task runs exactly one scenario and saves one .rds file to data/.
+
+data/ and logs/ are excluded from version control via .gitignore.
