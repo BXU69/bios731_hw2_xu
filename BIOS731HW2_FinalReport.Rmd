@@ -58,3 +58,216 @@ Therefore we use 475 simulations per scenario.
 
 ### Problem 1.3 Implementation 
 
+
+### Problem 1.4 Summarize
+```{r summary}
+library(tidyverse)
+
+# 1) Load all replicate files
+all_files <- list.files(
+  path = "data/reps",
+  pattern = "\\.Rds$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+stopifnot(length(all_files) > 0)
+
+raw <- map_dfr(all_files, readRDS)
+
+# (optional) sanity checks
+# Check you have 18 scenarios
+raw %>% distinct(n, beta_treatment, error_type) %>% nrow()
+
+# Check counts per scenario (should be 475 if fully complete)
+counts <- raw %>%
+  count(n, beta_treatment, error_type, name = "n_reps") %>%
+  arrange(n, beta_treatment, error_type)
+
+#print(counts)
+
+# 2) Scenario-level summary table
+summary_tbl <- raw %>%
+  group_by(n, beta_treatment, error_type) %>%
+  summarise(
+    n_reps = n(),
+    bias_mean = mean(bias),
+    bias_sd   = sd(bias),
+
+    cover_wald = mean(cover_wald),
+    cover_perc = mean(cover_perc),
+    cover_t    = mean(cover_t),
+
+    se_mean = mean(se_val),
+    se_sd   = sd(se_val),
+
+    time_wald_mean   = mean(time_wald),
+    time_perc_mean   = mean(time_perc),
+    time_boot_t_mean = mean(time_boot_t),
+    .groups = "drop"
+  ) %>%
+  arrange(error_type, n, beta_treatment)
+summary_tbl
+
+library(tidyverse)
+
+summary_tbl2 <- summary_tbl %>%
+  mutate(error_type = recode(error_type, heavy = "t3", normal = "normal"),
+         n = factor(n, levels = c(10, 50, 500)),
+         beta_treatment = factor(beta_treatment, levels = c(0, 0.5, 2)))
+
+cov_long <- summary_tbl2 %>%
+  select(n, beta_treatment, error_type, cover_wald, cover_perc, cover_t) %>%
+  pivot_longer(cols = starts_with("cover_"),
+               names_to = "method", values_to = "coverage") %>%
+  mutate(method = recode(method,
+                         cover_wald = "Wald",
+                         cover_perc = "Bootstrap percentile",
+                         cover_t    = "Bootstrap-t"))
+
+ggplot(cov_long, aes(x = n, y = coverage, color = method, group = method)) +
+  geom_hline(yintercept = 0.95, linetype = "dashed") +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_grid(error_type ~ beta_treatment) +
+  ylim(0, 1) +
+  labs(title = "Empirical coverage across CI methods",
+       x = "Sample size (n)",
+       y = "Coverage",
+       color = "Method")
+
+time_long <- summary_tbl2 %>%
+  select(n, beta_treatment, error_type,
+         time_wald_mean, time_perc_mean, time_boot_t_mean) %>%
+  pivot_longer(cols = starts_with("time_"),
+               names_to = "method", values_to = "mean_time") %>%
+  mutate(method = recode(method,
+                         time_wald_mean   = "Wald",
+                         time_perc_mean   = "Bootstrap percentile",
+                         time_boot_t_mean = "Bootstrap-t"))
+
+ggplot(time_long, aes(x = n, y = mean_time, color = method, group = method)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_y_log10() +
+  facet_grid(error_type ~ beta_treatment) +
+  labs(title = "Computation time per replicate across CI methods",
+       x = "Sample size (n)",
+       y = "Mean time (seconds, log scale)",
+       color = "Method")
+
+ggplot(summary_tbl2, aes(x = n, y = bias_mean, group = 1)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_grid(error_type ~ beta_treatment) +
+  labs(title = "Mean bias of beta_hat (beta_hat - beta_true)",
+       x = "Sample size (n)",
+       y = "Mean bias")
+
+## distribution of SE
+se_raw3 <- raw %>%
+  mutate(
+    n = factor(n, levels = c(10, 50, 500)),
+    beta_treatment = factor(beta_treatment, levels = c(0, 0.5, 2)),
+    error_type = recode(error_type, normal = "normal", heavy = "t3")
+  )
+
+ggplot(se_raw3, aes(x = n, y = se_val)) +
+  geom_boxplot(outlier.alpha = 0.2) +
+  facet_grid(error_type ~ beta_treatment) +
+  labs(
+    title = "Distribution of se(beta_hat) across replicates",
+    x = "Sample size (n)",
+    y = "se(beta_hat) from lm()"
+  )
+```
+
+
+### Problem 1.5 Discussion
+
+#### Overall findings
+
+Across all scenarios, estimator bias was small and decreased as sample size increased. Coverage and computation time varied substantially across CI methods, particularly under small sample sizes and heavy-tailed errors.
+
+#### Bias
+
+The OLS estimator of $\beta$ was approximately unbiased across all scenarios.
+For $n=10$, moderate variability in bias was observed, particularly under heavy-tailed (t3) errors, but bias approached zero as $n$ increased to 50 and 500.
+
+This behavior is consistent with the unbiasedness of OLS and the effect of small-sample variability under non-normal errors.
+
+#### Coverage
+
+Coverage patterns show clear differences across methods:
+
+Under normal errors, all methods approached the nominal 0.95 level as $n$ increased.
+
+For $n=10$, the percentile bootstrap tended to under-cover ($\approx 0.85–0.90$), especially when
+$\beta=0$.
+
+The Wald and bootstrap-t intervals were generally closer to the nominal level, particularly for moderate and large $n$.
+
+Under heavy-tailed (t3) errors, differences were more pronounced:
+
+At small sample sizes, coverage deteriorated for all methods.
+
+Bootstrap percentile showed noticeable undercoverage at $n=10$.
+
+Bootstrap-t and Wald were generally more stable as $n$ increased.
+
+By $n=500$, all three methods achieved coverage close to 0.95.
+
+Overall, sample size had a stronger impact on coverage than the true value of $\beta$.
+
+#### Standard Errors
+
+The model-based standard error decreased substantially with increasing sample size, as expected from asymptotic theory.
+
+Under heavy-tailed errors, the standard error was slightly inflated at small $n$, reflecting increased variability. However, differences across error types diminished as 
+$n$ increased.
+
+#### Computation Time
+
+Computation time differed dramatically across methods:
+
+Wald CI was extremely fast (on the order of $10^{-3}$ seconds).
+
+Bootstrap percentile required substantially more time ($\approx 0.3–0.5$ seconds).
+
+Bootstrap-t was by far the most computationally expensive (tens of seconds per replicate).
+
+Bootstrap-t was roughly two orders of magnitude slower than percentile, due to the nested bootstrap required to estimate the studentized standard error.
+
+Importantly, increases in sample size had only a modest effect on computation time relative to the dramatic differences between methods.
+
+#### Practical Implications
+
+For moderate to large sample sizes and approximately normal errors, the Wald CI provides accurate coverage at negligible computational cost, making it highly efficient.
+
+Under heavy-tailed errors and small samples, bootstrap methods can offer modest improvements in coverage, but the computational burden—particularly for bootstrap-t—is substantial.
+
+Given the minor coverage differences observed for larger $n$, bootstrap-t may not justify its computational expense in practical applications unless small-sample robustness is critical.
+
+#### Interaction Effects
+
+The primary interaction observed was between sample size and error distribution:
+
+Small $n$ combined with heavy-tailed errors produced the largest deviations from nominal coverage.
+
+As $n$ increased, differences between error distributions and CI methods diminished.
+
+This confirms that asymptotic approximations perform well in moderate to large samples, even under non-normal errors.
+
+
+
+
+
+
+
+
+
+
+
+
+

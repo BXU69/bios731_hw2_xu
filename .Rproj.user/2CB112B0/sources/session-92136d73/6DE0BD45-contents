@@ -1,0 +1,48 @@
+library(boot)
+
+#' Calculate Confidence Intervals using Wald, Percentile, and Bootstrap-t methods
+#' @param data Dataframe containing y and x1
+#' @param B Number of outer bootstrap resamples (default 500)
+#' @param B_inner Number of inner bootstrap resamples for bootstrap-t (default 100)
+get_ci_methods <- function(data, B = 500, B_inner = 100) {
+  
+  # 1. Wald Confidence Interval
+  model <- lm(y ~ x1, data = data)
+  beta_hat <- coef(model)["x1"]
+  se_wald <- summary(model)$coefficients["x1", "Std. Error"]
+  wald_ci <- c(beta_hat - 1.96 * se_wald, beta_hat + 1.96 * se_wald)
+  
+  # Statistic function for the boot package
+  # Returns both the estimate and its variance for the studentized (bootstrap-t) interval
+  boot_stat <- function(d, i) {
+    d_sub <- d[i, ]
+    m_sub <- lm(y ~ x1, data = d_sub)
+    b_star <- coef(m_sub)["x1"]
+    
+    # Inner bootstrap to estimate the variance of b_star
+    # Required for the 't*' statistic: (theta_star - theta) / se_star
+    inner_res <- replicate(B_inner, {
+      d_inner <- d_sub[sample(nrow(d_sub), replace = TRUE), ]
+      coef(lm(y ~ x1, data = d_inner))["x1"]
+    })
+    
+    return(c(b_star, var(inner_res)))
+  }
+  
+  # Run non-parametric bootstrap
+  boot_out <- boot(data, statistic = boot_stat, R = B)
+  
+  # 2. Percentile CI
+  perc_ci <- boot.ci(boot_out, type = "perc")$percent[4:5]
+  
+  # 3. Bootstrap-t CI (Studentized)
+  t_ci <- boot.ci(boot_out, type = "stud")$student[4:5]
+  
+  return(list(
+    wald = wald_ci, 
+    perc = perc_ci, 
+    boot_t = t_ci, 
+    beta_hat = beta_hat, 
+    se_wald = se_wald
+  ))
+}

@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --job-name=bios731_sim
+#SBATCH --output=logs/sim_%j.out
+#SBATCH --error=logs/sim_%j.err
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18        # Use 18 cores for 18 scenarios
+#SBATCH --mem=32G                 # Adjust memory based on cluster limits
+#SBATCH --time=12:00:00           # Expected time
+#SBATCH --partition=short         # Use appropriate partition
+
+# Load R module (adjust version based on your cluster)
+module load R/4.3.0 
+
+# Run the simulation script
+Rscript scripts/run_simulation.R
